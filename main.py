@@ -1,9 +1,10 @@
 import logging
 import telebot
 from telebot import types
-from apscheduler.schedulers.background import BackgroundScheduler
 import datetime
 import json
+import sqlite3
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, filename='bot.log', filemode='w', format='%(asctime)s - %(name)s - %(''levelname)s - %(message)s')
@@ -13,38 +14,50 @@ logger = logging.getLogger(__name__)
 bot_token = ''
 bot = telebot.TeleBot(bot_token)
 
-# Data storage (for simplicity, using a JSON file)
-data_file = 'user_data.json'
+# Data storage
+conn = sqlite3.connect('smile_bot.db', check_same_thread=False)
 
 
-def save_data(data):
-    with open(data_file, 'w') as file:
-        json.dump(data, file)
+def setup_database():
+    with conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_smiles (
+                user_id TEXT PRIMARY KEY,
+                smiles TEXT
+            )
+        """)
 
 
-def load_data():
-    try:
-        with open(data_file, 'r') as file:
-            return json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+setup_database()
 
 
-# Load existing data
-user_data = load_data()
+def save_data(user_id, smiles):
+    with conn:
+        conn.execute("REPLACE INTO user_smiles (user_id, smiles) VALUES (?, ?)",
+                     (user_id, json.dumps(smiles)))
+
+
+def load_data(user_id):
+    with conn:
+        cur = conn.execute("SELECT smiles FROM user_smiles WHERE user_id = ?", (user_id,))
+        row = cur.fetchone()
+        if row:
+            return json.loads(row[0])
+        return []
+
+
+def get_all_user_ids():
+    with conn:
+        cur = conn.execute("SELECT user_id FROM user_smiles")
+        return [row[0] for row in cur.fetchall()]
 
 
 # Function to send weekly message to users
 def ask_weekly_smiles():
-    current_user_data = load_data()
-    for user_id in current_user_data.keys():
+    user_ids = get_all_user_ids()  # Get all user IDs from the database
+    for user_id in user_ids:
         markup = generate_markup()
         bot.send_message(user_id, "What smiles happened with you this week? 🗓", reply_markup=markup)
-
-
-scheduler = BackgroundScheduler()
-scheduler.add_job(ask_weekly_smiles, 'cron', day_of_week='tue', hour=18, minute=00)
-scheduler.start()
 
 
 # Function to generate inline keyboard markup
@@ -73,9 +86,12 @@ def send_welcome(message):
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     user_id = str(message.chat.id)
-    if user_id not in user_data:
-        user_data[user_id] = []
-        save_data(user_data)
+    user_smiles = load_data(user_id)  # Load this user's smiles from the database
+
+    # If the user is not in the database, initialize their smiles list and save it
+    if user_smiles is None:
+        user_smiles = []
+        save_data(user_id, user_smiles)
 
     send_welcome(message)
 
@@ -90,7 +106,7 @@ def add_smile_initiate(message):
 # Function to record a new smile after user response
 def add_smile_record(message):
     user_id = str(message.chat.id)
-    current_user_data = load_data()
+    user_smiles = load_data(user_id)  # Load only this user's smiles
     smile_text = message.text.strip()
     markup = generate_markup()
 
@@ -101,8 +117,12 @@ def add_smile_record(message):
     # Format the date as "23 January 2024"
     formatted_date = datetime.date.today().strftime("%d %B %Y")
 
-    current_user_data[user_id].append({'date': formatted_date, 'smile': smile_text})
-    save_data(current_user_data)
+    # Append the new smile to the user's existing smiles
+    user_smiles.append({'date': formatted_date, 'smile': smile_text})
+
+    # Save the updated smiles list for this user
+    save_data(user_id, user_smiles)
+
     bot.reply_to(message, "Smile recorded successfully! ✅", reply_markup=markup)
 
 
@@ -114,30 +134,28 @@ def number_to_emoji(number):
 # Command to show user smiles
 @bot.message_handler(commands=['mysmiles'])
 def show_smiles(message):
-    current_user_data = load_data()
-
     user_id = str(message.chat.id)
-    smiles = current_user_data.get(user_id, [])
+    user_smiles = load_data(user_id)  # Load only this user's smiles
 
-    if not smiles:
+    if not user_smiles:
         bot.reply_to(message, "You have no recorded Smiles. 📭")
     else:
-        response = "\n".join([f"{number_to_emoji(idx+1)} {smile['date']}: {smile['smile']}" for idx, smile in enumerate(smiles)])
+        response = "\n".join([f"{number_to_emoji(idx+1)} {smile['date']}: {smile['smile']}" for idx, smile in enumerate(user_smiles)])
         bot.reply_to(message, response)
 
 
 # Command to update a smile
 @bot.message_handler(commands=['updatesmile'])
 def update_smile_prompt(message):
-    current_user_data = load_data()
     user_id = str(message.chat.id)
-    smiles = current_user_data.get(user_id, [])
-    if not smiles:
+    user_smiles = load_data(user_id)  # Load only this user's smiles
+
+    if not user_smiles:
         bot.reply_to(message, "You have no recorded Smiles. 📭")
         return
 
-    response = "Select an Smiles to update by number: 📝 \n" + "\n".join(
-        [f"{number_to_emoji(idx + 1)}: {smile['date']}: {smile['smile']}" for idx, smile in enumerate(smiles)])
+    response = "Select a Smile to update by number: 📝 \n" + "\n".join(
+        [f"{number_to_emoji(idx + 1)}: {smile['date']}: {smile['smile']}" for idx, smile in enumerate(user_smiles)])
 
     bot.send_message(message.chat.id, response)
     bot.register_next_step_handler(message, process_smile_update)
@@ -146,7 +164,7 @@ def update_smile_prompt(message):
 # Function to process the smile update
 def process_smile_update(message):
     user_id = str(message.chat.id)
-    current_user_data = load_data()
+    user_smiles = load_data(user_id)  # Load smiles for this user
 
     try:
         parts = message.text.split(": ", 1)
@@ -157,11 +175,11 @@ def process_smile_update(message):
         smile_number, new_details = parts
         smile_number = int(smile_number) - 1
 
-        if 0 <= smile_number < len(current_user_data.get(user_id, [])):
-            current_user_data[user_id][smile_number]['smile'] = new_details
-            save_data(current_user_data)
+        if 0 <= smile_number < len(user_smiles):
+            user_smiles[smile_number]['smile'] = new_details
+            save_data(user_id, user_smiles)  # Save the updated smiles for this user
             markup = generate_markup()
-            bot.reply_to(message, "Smile updated successfully! ✏️✅", reply_markup=markup)  # Send the markup
+            bot.reply_to(message, "Smile updated successfully! ✏️✅", reply_markup=markup)
         else:
             bot.reply_to(message, "Invalid Smile number. 🚫 Please try again with valid Smile number.")
     except ValueError:
@@ -171,15 +189,15 @@ def process_smile_update(message):
 # Command to delete a smile
 @bot.message_handler(commands=['deletesmile'])
 def delete_smile_prompt(message):
-    current_user_data = load_data()
     user_id = str(message.chat.id)
-    smiles = current_user_data.get(user_id, [])
-    if not smiles:
+    user_smiles = load_data(user_id)  # Load only this user's smiles
+
+    if not user_smiles:
         bot.reply_to(message, "You have no recorded Smiles. 📭")
         return
 
-    response = "Select Smile to delete by number: 🗑️ \n" + "\n".join(
-        [f"{number_to_emoji(idx + 1)}: {smile['date']}: {smile['smile']}" for idx, smile in enumerate(smiles)])
+    response = "Select a Smile to delete by number: 🗑️ \n" + "\n".join(
+        [f"{number_to_emoji(idx + 1)}: {smile['date']}: {smile['smile']}" for idx, smile in enumerate(user_smiles)])
 
     bot.send_message(message.chat.id, response)
     bot.register_next_step_handler(message, process_smile_deletion)
@@ -188,14 +206,14 @@ def delete_smile_prompt(message):
 # Function to process the smile deletion
 def process_smile_deletion(message):
     user_id = str(message.chat.id)
-    current_user_data = load_data()
+    user_smiles = load_data(user_id)  # Load smiles for this user
 
     try:
         smile_number = int(message.text) - 1
 
-        if 0 <= smile_number < len(current_user_data.get(user_id, [])):
-            del current_user_data[user_id][smile_number]
-            save_data(current_user_data)
+        if 0 <= smile_number < len(user_smiles):
+            del user_smiles[smile_number]
+            save_data(user_id, user_smiles)  # Save the updated smiles for this user
             markup = generate_markup()
             bot.reply_to(message, "Smile deleted successfully! 🗑️✅", reply_markup=markup)
         else:
@@ -236,12 +254,13 @@ def handle_callback_query(call):
 # Helper function to list smiles and prompt for an action
 def list_and_prompt_for_action(message, prompt, next_step_handler):
     user_id = str(message.chat.id)
-    smiles = user_data.get(user_id, [])
-    if not smiles:
+    user_smiles = load_data(user_id)  # Load the smiles for this user from the database
+
+    if not user_smiles:
         bot.reply_to(message, "You have no recorded Smiles. 📭")
         return
 
-    response = prompt + "\n" + "\n".join([f"{idx+1}: {smile['date']}: {smile['smile']}" for idx, smile in enumerate(smiles)])
+    response = prompt + "\n" + "\n".join([f"{idx+1}: {smile['date']}: {smile['smile']}" for idx, smile in enumerate(user_smiles)])
     bot.send_message(message.chat.id, response)
     bot.register_next_step_handler(message, next_step_handler)
 
