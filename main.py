@@ -36,7 +36,8 @@ user_data = load_data()
 
 # Function to send monthly message to users
 def ask_weekly_events():
-    for user_id in user_data.keys():
+    current_user_data = load_data()
+    for user_id in current_user_data.keys():
         markup = generate_markup()
         bot.send_message(user_id, "What events happened with you this week? 🗓", reply_markup=markup)
 
@@ -86,6 +87,7 @@ def add_event_initiate(message):
 # Function to record a new event after user response
 def add_event_record(message):
     user_id = str(message.chat.id)
+    current_user_data = load_data()
     event_text = message.text.strip()
     markup = generate_markup()
 
@@ -93,11 +95,11 @@ def add_event_record(message):
         bot.send_message(message.chat.id, "You didn't specify an event. Please try again using /addevent. 🔁")
         return
 
-    # Format the date as '23 January 2024'
+    # Format the date as "23 January 2024"
     formatted_date = datetime.date.today().strftime("%d %B %Y")
 
-    user_data[user_id].append({'date': formatted_date, 'event': event_text})
-    save_data(user_data)
+    current_user_data[user_id].append({'date': formatted_date, 'event': event_text})
+    save_data(current_user_data)
     bot.reply_to(message, "Event recorded successfully! ✅", reply_markup=markup)
 
 
@@ -106,6 +108,7 @@ def number_to_emoji(number):
     return ''.join(emoji_numbers[int(digit)] for digit in str(number))
 
 
+# Command to show user events
 @bot.message_handler(commands=['myevents'])
 def show_events(message):
     current_user_data = load_data()
@@ -123,12 +126,23 @@ def show_events(message):
 # Command to update an event
 @bot.message_handler(commands=['updateevent'])
 def update_event_prompt(message):
-    list_and_prompt_for_action(message, "Select an event to update by number: 📝 \n", process_event_update)
+    current_user_data = load_data()
+    user_id = str(message.chat.id)
+    events = current_user_data.get(user_id, [])
+    if not events:
+        bot.reply_to(message, "You have no recorded events. 📭")
+        return
+
+    response = "Select an event to update by number: 📝 \n" + "\n".join([f"{idx+1}: {event['date']}: {event['event']}" for idx, event in enumerate(events)])
+    bot.send_message(message.chat.id, response)
+    bot.register_next_step_handler(message, process_event_update)
 
 
 # Function to process the event update
 def process_event_update(message):
     user_id = str(message.chat.id)
+    current_user_data = load_data()
+
     try:
         parts = message.text.split(": ", 1)
         if len(parts) != 2:
@@ -137,11 +151,6 @@ def process_event_update(message):
 
         event_number, new_details = parts
         event_number = int(event_number) - 1
-        current_user_data = load_data()
-
-        if not new_details:
-            bot.reply_to(message, "Event details cannot be empty. 🚫 Please try again.")
-            return
 
         if 0 <= event_number < len(current_user_data.get(user_id, [])):
             current_user_data[user_id][event_number]['event'] = new_details
@@ -156,15 +165,26 @@ def process_event_update(message):
 # Command to delete an event
 @bot.message_handler(commands=['deleteevent'])
 def delete_event_prompt(message):
-    list_and_prompt_for_action(message, "Select an event to delete by number: 🗑️ \n", process_event_deletion)
+    current_user_data = load_data()
+    user_id = str(message.chat.id)
+    events = current_user_data.get(user_id, [])
+    if not events:
+        bot.reply_to(message, "You have no recorded events. 📭")
+        return
+
+    response = "Select an event to delete by number: 🗑️ \n" + "\n".join(
+        [f"{idx + 1}: {event['date']}: {event['event']}" for idx, event in enumerate(events)])
+    bot.send_message(message.chat.id, response)
+    bot.register_next_step_handler(message, process_event_deletion)
 
 
 # Function to process the event deletion
 def process_event_deletion(message):
     user_id = str(message.chat.id)
+    current_user_data = load_data()
+
     try:
         event_number = int(message.text) - 1
-        current_user_data = load_data()
 
         if 0 <= event_number < len(current_user_data.get(user_id, [])):
             del current_user_data[user_id][event_number]
