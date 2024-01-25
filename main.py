@@ -34,7 +34,7 @@ def load_data():
 user_data = load_data()
 
 
-# Function to send monthly message to users
+# Function to send weekly message to users
 def ask_weekly_events():
     current_user_data = load_data()
     for user_id in current_user_data.keys():
@@ -42,7 +42,6 @@ def ask_weekly_events():
         bot.send_message(user_id, "What events happened with you this week? 🗓", reply_markup=markup)
 
 
-# Scheduler to ask users weekly on Sundays
 scheduler = BackgroundScheduler()
 scheduler.add_job(ask_weekly_events, 'cron', day_of_week='tue', hour=18, minute=00)
 scheduler.start()
@@ -51,10 +50,14 @@ scheduler.start()
 # Function to generate inline keyboard markup
 def generate_markup():
     markup = types.InlineKeyboardMarkup()
-    markup.row(types.InlineKeyboardButton("Add Event 📝", callback_data="add_event"))
-    markup.row(types.InlineKeyboardButton("My Events 📚", callback_data="my_events"))
-    markup.row(types.InlineKeyboardButton("Update Event ✏️", callback_data="update_event"))
-    markup.row(types.InlineKeyboardButton("Delete Event 🗑️", callback_data="delete_event"))
+    markup.row(
+        types.InlineKeyboardButton("Add Event 📝", callback_data="add_event"),
+        types.InlineKeyboardButton("My Events 📚", callback_data="my_events")
+    )
+    markup.row(
+        types.InlineKeyboardButton("Update Event ✏️", callback_data="update_event"),
+        types.InlineKeyboardButton("Delete Event 🗑️", callback_data="delete_event")
+    )
     return markup
 
 
@@ -133,7 +136,9 @@ def update_event_prompt(message):
         bot.reply_to(message, "You have no recorded events. 📭")
         return
 
-    response = "Select an event to update by number: 📝 \n" + "\n".join([f"{idx+1}: {event['date']}: {event['event']}" for idx, event in enumerate(events)])
+    response = "Select an event to update by number: 📝 \n" + "\n".join(
+        [f"{number_to_emoji(idx + 1)}: {event['date']}: {event['event']}" for idx, event in enumerate(events)])
+
     bot.send_message(message.chat.id, response)
     bot.register_next_step_handler(message, process_event_update)
 
@@ -155,7 +160,8 @@ def process_event_update(message):
         if 0 <= event_number < len(current_user_data.get(user_id, [])):
             current_user_data[user_id][event_number]['event'] = new_details
             save_data(current_user_data)
-            bot.reply_to(message, "Event updated successfully! ✏️✅")
+            markup = generate_markup()
+            bot.reply_to(message, "Event updated successfully! ✏️✅", reply_markup=markup)  # Send the markup
         else:
             bot.reply_to(message, "Invalid event number. 🚫 Please try again with a valid event number.")
     except ValueError:
@@ -173,7 +179,8 @@ def delete_event_prompt(message):
         return
 
     response = "Select an event to delete by number: 🗑️ \n" + "\n".join(
-        [f"{idx + 1}: {event['date']}: {event['event']}" for idx, event in enumerate(events)])
+        [f"{number_to_emoji(idx + 1)}: {event['date']}: {event['event']}" for idx, event in enumerate(events)])
+
     bot.send_message(message.chat.id, response)
     bot.register_next_step_handler(message, process_event_deletion)
 
@@ -189,7 +196,8 @@ def process_event_deletion(message):
         if 0 <= event_number < len(current_user_data.get(user_id, [])):
             del current_user_data[user_id][event_number]
             save_data(current_user_data)
-            bot.reply_to(message, "Event deleted successfully! 🗑️✅")
+            markup = generate_markup()
+            bot.reply_to(message, "Event deleted successfully! 🗑️✅", reply_markup=markup)
         else:
             bot.reply_to(message, "Invalid event number. 🚫 Please try again with a valid event number.")
     except ValueError:
