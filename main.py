@@ -35,15 +35,15 @@ user_data = load_data()
 
 
 # Function to send weekly message to users
-def ask_weekly_events():
+def ask_weekly_smiles():
     current_user_data = load_data()
     for user_id in current_user_data.keys():
         markup = generate_markup()
-        bot.send_message(user_id, "What events happened with you this week? 🗓", reply_markup=markup)
+        bot.send_message(user_id, "What smiles happened with you this week? 🗓", reply_markup=markup)
 
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(ask_weekly_events, 'cron', day_of_week='tue', hour=18, minute=00)
+scheduler.add_job(ask_weekly_smiles, 'cron', day_of_week='tue', hour=18, minute=00)
 scheduler.start()
 
 
@@ -51,12 +51,12 @@ scheduler.start()
 def generate_markup():
     markup = types.InlineKeyboardMarkup()
     markup.row(
-        types.InlineKeyboardButton("Add Event 📝", callback_data="add_event"),
-        types.InlineKeyboardButton("My Events 📚", callback_data="my_events")
+        types.InlineKeyboardButton("Add Smile 📝", callback_data="add_smile"),
+        types.InlineKeyboardButton("My Smiles 📚", callback_data="my_smiles")
     )
     markup.row(
-        types.InlineKeyboardButton("Update Event ✏️", callback_data="update_event"),
-        types.InlineKeyboardButton("Delete Event 🗑️", callback_data="delete_event")
+        types.InlineKeyboardButton("Update Smile ✏️", callback_data="update_smile"),
+        types.InlineKeyboardButton("Delete Smile 🗑️", callback_data="delete_smile")
     )
     return markup
 
@@ -64,7 +64,7 @@ def generate_markup():
 # Function to send a welcome message with inline keyboard
 def send_welcome(message):
     markup = generate_markup()
-    msg = ("Hello! I'm your personal event recorder bot. 🤖\n"
+    msg = ("Hello! I'm your personal Smile recorder bot. 🤖\n"
            "Choose an option below to get started. 👇")
     bot.send_message(message.chat.id, msg, reply_markup=markup)
 
@@ -80,30 +80,30 @@ def handle_start(message):
     send_welcome(message)
 
 
-# Command to initiate adding a new event
-@bot.message_handler(commands=['addevent'])
-def add_event_initiate(message):
-    bot.send_message(message.chat.id, "What event would you like to record? 📝")
-    bot.register_next_step_handler(message, add_event_record)
+# Command to initiate adding a new smile
+@bot.message_handler(commands=['addsmile'])
+def add_smile_initiate(message):
+    bot.send_message(message.chat.id, "What Smile would you like to record? 📝")
+    bot.register_next_step_handler(message, add_smile_record)
 
 
-# Function to record a new event after user response
-def add_event_record(message):
+# Function to record a new smile after user response
+def add_smile_record(message):
     user_id = str(message.chat.id)
     current_user_data = load_data()
-    event_text = message.text.strip()
+    smile_text = message.text.strip()
     markup = generate_markup()
 
-    if not event_text:
-        bot.send_message(message.chat.id, "You didn't specify an event. Please try again using /addevent. 🔁")
+    if not smile_text:
+        bot.send_message(message.chat.id, "You didn't specify Smile. Please try again using /addsmile. 🔁")
         return
 
     # Format the date as "23 January 2024"
     formatted_date = datetime.date.today().strftime("%d %B %Y")
 
-    current_user_data[user_id].append({'date': formatted_date, 'event': event_text})
+    current_user_data[user_id].append({'date': formatted_date, 'smile': smile_text})
     save_data(current_user_data)
-    bot.reply_to(message, "Event recorded successfully! ✅", reply_markup=markup)
+    bot.reply_to(message, "Smile recorded successfully! ✅", reply_markup=markup)
 
 
 def number_to_emoji(number):
@@ -111,40 +111,40 @@ def number_to_emoji(number):
     return ''.join(emoji_numbers[int(digit)] for digit in str(number))
 
 
-# Command to show user events
-@bot.message_handler(commands=['myevents'])
-def show_events(message):
+# Command to show user smiles
+@bot.message_handler(commands=['mysmiles'])
+def show_smiles(message):
     current_user_data = load_data()
 
     user_id = str(message.chat.id)
-    events = current_user_data.get(user_id, [])
+    smiles = current_user_data.get(user_id, [])
 
-    if not events:
-        bot.reply_to(message, "You have no recorded events. 📭")
+    if not smiles:
+        bot.reply_to(message, "You have no recorded Smiles. 📭")
     else:
-        response = "\n".join([f"{number_to_emoji(idx+1)} {event['date']}: {event['event']}" for idx, event in enumerate(events)])
+        response = "\n".join([f"{number_to_emoji(idx+1)} {smile['date']}: {smile['smile']}" for idx, smile in enumerate(smiles)])
         bot.reply_to(message, response)
 
 
-# Command to update an event
-@bot.message_handler(commands=['updateevent'])
-def update_event_prompt(message):
+# Command to update a smile
+@bot.message_handler(commands=['updatesmile'])
+def update_smile_prompt(message):
     current_user_data = load_data()
     user_id = str(message.chat.id)
-    events = current_user_data.get(user_id, [])
-    if not events:
-        bot.reply_to(message, "You have no recorded events. 📭")
+    smiles = current_user_data.get(user_id, [])
+    if not smiles:
+        bot.reply_to(message, "You have no recorded Smiles. 📭")
         return
 
-    response = "Select an event to update by number: 📝 \n" + "\n".join(
-        [f"{number_to_emoji(idx + 1)}: {event['date']}: {event['event']}" for idx, event in enumerate(events)])
+    response = "Select an Smiles to update by number: 📝 \n" + "\n".join(
+        [f"{number_to_emoji(idx + 1)}: {smile['date']}: {smile['smile']}" for idx, smile in enumerate(smiles)])
 
     bot.send_message(message.chat.id, response)
-    bot.register_next_step_handler(message, process_event_update)
+    bot.register_next_step_handler(message, process_smile_update)
 
 
-# Function to process the event update
-def process_event_update(message):
+# Function to process the smile update
+def process_smile_update(message):
     user_id = str(message.chat.id)
     current_user_data = load_data()
 
@@ -154,52 +154,52 @@ def process_event_update(message):
             bot.reply_to(message, "Please enter a valid format: number: new details. 📝")
             return
 
-        event_number, new_details = parts
-        event_number = int(event_number) - 1
+        smile_number, new_details = parts
+        smile_number = int(smile_number) - 1
 
-        if 0 <= event_number < len(current_user_data.get(user_id, [])):
-            current_user_data[user_id][event_number]['event'] = new_details
+        if 0 <= smile_number < len(current_user_data.get(user_id, [])):
+            current_user_data[user_id][smile_number]['smile'] = new_details
             save_data(current_user_data)
             markup = generate_markup()
-            bot.reply_to(message, "Event updated successfully! ✏️✅", reply_markup=markup)  # Send the markup
+            bot.reply_to(message, "Smile updated successfully! ✏️✅", reply_markup=markup)  # Send the markup
         else:
-            bot.reply_to(message, "Invalid event number. 🚫 Please try again with a valid event number.")
+            bot.reply_to(message, "Invalid Smile number. 🚫 Please try again with valid Smile number.")
     except ValueError:
         bot.reply_to(message, "Please enter a valid format: number: new details. 🔠")
 
 
-# Command to delete an event
-@bot.message_handler(commands=['deleteevent'])
-def delete_event_prompt(message):
+# Command to delete a smile
+@bot.message_handler(commands=['deletesmile'])
+def delete_smile_prompt(message):
     current_user_data = load_data()
     user_id = str(message.chat.id)
-    events = current_user_data.get(user_id, [])
-    if not events:
-        bot.reply_to(message, "You have no recorded events. 📭")
+    smiles = current_user_data.get(user_id, [])
+    if not smiles:
+        bot.reply_to(message, "You have no recorded Smiles. 📭")
         return
 
-    response = "Select an event to delete by number: 🗑️ \n" + "\n".join(
-        [f"{number_to_emoji(idx + 1)}: {event['date']}: {event['event']}" for idx, event in enumerate(events)])
+    response = "Select Smile to delete by number: 🗑️ \n" + "\n".join(
+        [f"{number_to_emoji(idx + 1)}: {smile['date']}: {smile['smile']}" for idx, smile in enumerate(smiles)])
 
     bot.send_message(message.chat.id, response)
-    bot.register_next_step_handler(message, process_event_deletion)
+    bot.register_next_step_handler(message, process_smile_deletion)
 
 
-# Function to process the event deletion
-def process_event_deletion(message):
+# Function to process the smile deletion
+def process_smile_deletion(message):
     user_id = str(message.chat.id)
     current_user_data = load_data()
 
     try:
-        event_number = int(message.text) - 1
+        smile_number = int(message.text) - 1
 
-        if 0 <= event_number < len(current_user_data.get(user_id, [])):
-            del current_user_data[user_id][event_number]
+        if 0 <= smile_number < len(current_user_data.get(user_id, [])):
+            del current_user_data[user_id][smile_number]
             save_data(current_user_data)
             markup = generate_markup()
-            bot.reply_to(message, "Event deleted successfully! 🗑️✅", reply_markup=markup)
+            bot.reply_to(message, "Smile deleted successfully! 🗑️✅", reply_markup=markup)
         else:
-            bot.reply_to(message, "Invalid event number. 🚫 Please try again with a valid event number.")
+            bot.reply_to(message, "Invalid Smile number. 🚫 Please try again with valid Smile number.")
     except ValueError:
         bot.reply_to(message, "Please enter a valid number. 🔢")
 
@@ -208,40 +208,40 @@ def process_event_deletion(message):
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback_query(call):
     try:
-        if call.data == "add_event":
+        if call.data == "add_smile":
             bot.answer_callback_query(call.id)
-            logger.info("Callback: Add Event button clicked")
-            add_event_initiate(call.message)
+            logger.info("Callback: Add Smile button clicked")
+            add_smile_initiate(call.message)
 
-        elif call.data == "my_events":
+        elif call.data == "my_smiles":
             bot.answer_callback_query(call.id)
-            logger.info("Callback: My Events button clicked")
-            show_events(call.message)
+            logger.info("Callback: My Smiles button clicked")
+            show_smiles(call.message)
 
-        elif call.data == "update_event":
+        elif call.data == "update_smile":
             bot.answer_callback_query(call.id)
-            logger.info("Callback: Update Event button clicked")
-            update_event_prompt(call.message)
+            logger.info("Callback: Update Smile button clicked")
+            update_smile_prompt(call.message)
 
-        elif call.data == "delete_event":
+        elif call.data == "delete_smile":
             bot.answer_callback_query(call.id)
-            logger.info("Callback: Delete Event button clicked")
-            delete_event_prompt(call.message)
+            logger.info("Callback: Delete Smile button clicked")
+            delete_smile_prompt(call.message)
 
     except Exception as e:
         bot.send_message(call.message.chat.id, f"Error: {str(e)}")
         logger.exception("Exception in handle_callback_query")
 
 
-# Helper function to list events and prompt for an action
+# Helper function to list smiles and prompt for an action
 def list_and_prompt_for_action(message, prompt, next_step_handler):
     user_id = str(message.chat.id)
-    events = user_data.get(user_id, [])
-    if not events:
-        bot.reply_to(message, "You have no recorded events. 📭")
+    smiles = user_data.get(user_id, [])
+    if not smiles:
+        bot.reply_to(message, "You have no recorded Smiles. 📭")
         return
 
-    response = prompt + "\n" + "\n".join([f"{idx+1}: {event['date']}: {event['event']}" for idx, event in enumerate(events)])
+    response = prompt + "\n" + "\n".join([f"{idx+1}: {smile['date']}: {smile['smile']}" for idx, smile in enumerate(smiles)])
     bot.send_message(message.chat.id, response)
     bot.register_next_step_handler(message, next_step_handler)
 
